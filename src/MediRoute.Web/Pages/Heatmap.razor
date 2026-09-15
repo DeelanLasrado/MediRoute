@@ -1,0 +1,74 @@
+@page "/heatmap"
+@inject ApiService Api
+
+<PageTitle>City Heatmap — MediRoute</PageTitle>
+
+<h1>City Capacity Heatmap</h1>
+<p class="subtitle">Aggregate bed availability for city health officials</p>
+
+@if (_loading)
+{
+    <div class="alert alert-info">Loading city aggregates…</div>
+}
+else
+{
+    <div class="grid-3">
+        @foreach (var city in _cities)
+        {
+            var loadPct = city.TotalBeds > 0
+                ? (1.0 - (double)city.AvailableBeds / city.TotalBeds) * 100
+                : 0;
+            var heatClass = loadPct > 80 ? "badge-p1" : loadPct > 55 ? "badge-p2" : "badge-p3";
+            <div class="panel" style="animation-delay: @(city.Index * 0.08)s;">
+                <h2>@city.Name</h2>
+                <span class="badge @heatClass">@(loadPct > 80 ? "CRITICAL" : loadPct > 55 ? "HIGH LOAD" : "STABLE")</span>
+                <div class="grid-2" style="margin-top: 1.25rem;">
+                    <div class="stat">
+                        <div class="stat-value">@city.HospitalCount</div>
+                        <div class="stat-label">Hospitals</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value">@city.AvailableBeds</div>
+                        <div class="stat-label">Beds Free</div>
+                    </div>
+                </div>
+                <div class="stat" style="margin-top: 0.75rem;">
+                    <div class="stat-value" style="font-size: 1.2rem;">@city.AvailableIcu</div>
+                    <div class="stat-label">ICU Free</div>
+                </div>
+                <div class="cap-bar" style="margin-top: 1rem;">
+                    <div class="cap-fill" style="width: @(100 - loadPct)%;"></div>
+                </div>
+                <p class="hospital-meta" style="margin-top: 0.5rem;">@((100 - loadPct).ToString("F0"))% capacity remaining</p>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<CityAgg> _cities = [];
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var hospitals = await Api.GetHospitalsAsync() ?? [];
+            _cities = hospitals
+                .GroupBy(h => h.City)
+                .Select((g, i) => new CityAgg(
+                    g.Key,
+                    g.Count(),
+                    g.Sum(h => h.TotalBeds),
+                    g.Sum(h => h.AvailableBeds),
+                    g.Sum(h => h.AvailableIcuBeds),
+                    i))
+                .OrderByDescending(c => c.TotalBeds - c.AvailableBeds)
+                .ToList();
+        }
+        catch { _cities = []; }
+        finally { _loading = false; }
+    }
+
+    private record CityAgg(string Name, int HospitalCount, int TotalBeds, int AvailableBeds, int AvailableIcu, int Index);
+}

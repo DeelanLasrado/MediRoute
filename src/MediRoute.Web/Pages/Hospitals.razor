@@ -1,0 +1,75 @@
+@page "/hospitals"
+@inject ApiService Api
+
+<PageTitle>Hospitals — MediRoute</PageTitle>
+
+<h1>Hospital Registry</h1>
+<p class="subtitle">Real-time capacity across the MediRoute network</p>
+
+<div style="margin-bottom: 1.25rem;">
+    <label>Filter by city</label>
+    <InputSelect @bind-Value="_city" @bind-Value:after="LoadAsync" style="max-width: 280px;">
+        <option value="">All cities</option>
+        @foreach (var c in _cities)
+        {
+            <option value="@c">@c</option>
+        }
+    </InputSelect>
+</div>
+
+@if (_loading)
+{
+    <div class="alert alert-info">Loading…</div>
+}
+else
+{
+    <div class="panel">
+        @foreach (var h in _hospitals)
+        {
+            <div class="hospital-row">
+                <div style="flex: 1;">
+                    <strong>@h.Name</strong>
+                    <div class="hospital-meta">@h.Address, @h.City · @h.Phone</div>
+                    <div class="hospital-meta" style="margin-top: 0.35rem;">
+                        Specialties: @string.Join(", ", h.Specialties.Where(s => s.IsAvailable).Select(s => s.Name))
+                    </div>
+                    <div class="cap-bar" style="max-width: 280px;">
+                        <div class="cap-fill" style="width: @(h.TotalBeds > 0 ? (double)h.AvailableBeds / h.TotalBeds * 100 : 0)%;"></div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 1rem;">
+                    <div class="stat">
+                        <div class="stat-value" style="font-size: 1.2rem;">@h.AvailableBeds/@h.TotalBeds</div>
+                        <div class="stat-label">Beds</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" style="font-size: 1.2rem;">@h.AvailableIcuBeds/@h.IcuBeds</div>
+                        <div class="stat-label">ICU</div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<Hospital> _hospitals = [];
+    private List<string> _cities = [];
+    private string _city = "";
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _hospitals = await Api.GetHospitalsAsync(string.IsNullOrEmpty(_city) ? null : _city) ?? [];
+            if (!_cities.Any())
+                _cities = _hospitals.Select(h => h.City).Distinct().OrderBy(c => c).ToList();
+        }
+        catch { _hospitals = []; }
+        finally { _loading = false; }
+    }
+}

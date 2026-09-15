@@ -1,0 +1,149 @@
+@page "/triage"
+@inject ApiService Api
+
+<PageTitle>AI Triage — MediRoute</PageTitle>
+
+<h1>AI Symptom Triage</h1>
+<p class="subtitle">Describe symptoms — GPT-4o classifies urgency and routes to the best hospital</p>
+
+<div class="grid-2">
+    <div class="panel">
+        <EditForm Model="_request" OnValidSubmit="Analyze">
+            <label>Symptoms Description</label>
+            <InputTextArea @bind-Value="_request.Symptoms"
+                           placeholder="e.g. 55-year-old male with severe chest pain radiating to left arm, sweating, shortness of breath for 20 minutes" />
+
+            <div class="form-row">
+                <div>
+                    <label>Latitude</label>
+                    <InputNumber @bind-Value="_request.Latitude" />
+                </div>
+                <div>
+                    <label>Longitude</label>
+                    <InputNumber @bind-Value="_request.Longitude" />
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div>
+                    <label>Patient Name (optional)</label>
+                    <InputText @bind-Value="_request.PatientName" />
+                </div>
+                <div>
+                    <label>Blood Type Needed (optional)</label>
+                    <InputSelect @bind-Value="_request.BloodTypeNeeded">
+                        <option value="">— None —</option>
+                        @foreach (var bt in new[] { "A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-" })
+                        {
+                            <option value="@bt">@bt</option>
+                        }
+                    </InputSelect>
+                </div>
+            </div>
+
+            <button class="btn btn-primary" type="submit" disabled="@_analyzing">
+                @(_analyzing ? "Analyzing…" : "Analyze & Route")
+            </button>
+        </EditForm>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-error" style="margin-top: 1rem;">@_error</div>
+        }
+    </div>
+
+    <div class="panel">
+        @if (_result is null)
+        {
+            <div class="alert alert-info">Results will appear here after analysis</div>
+        }
+        else
+        {
+            <h2>Triage Result</h2>
+            <p>
+                <span class="badge badge-@_result.Triage.UrgencyLevel.ToString().ToLowerInvariant()">
+                    @_result.Triage.UrgencyLevel
+                </span>
+            </p>
+            <p style="margin: 0.75rem 0;"><strong>Likely condition:</strong> @_result.Triage.LikelyCondition</p>
+            <p><strong>Specialist needed:</strong> @_result.Triage.SpecialistRequired</p>
+            <p><strong>Est. stabilization:</strong> @_result.Triage.EstimatedStabilizationMinutes min</p>
+            <p class="hospital-meta" style="margin-top: 0.5rem;">@_result.Triage.Reasoning</p>
+
+            <h2 style="margin-top: 1.75rem;">Top Hospital Recommendations</h2>
+            @if (!_result.RecommendedHospitals.Any())
+            {
+                <div class="alert alert-info">No hospital recommendations available (routing service may be offline)</div>
+            }
+            @foreach (var h in _result.RecommendedHospitals)
+            {
+                <div class="hospital-row">
+                    <div>
+                        <strong>@h.Name</strong>
+                        <div class="hospital-meta">
+                            @h.DistanceKm km · ETA @h.PredictedEtaMinutes min · Score @h.Score
+                            @if (h.HasSpecialty) { <span> · Specialty ✓</span> }
+                            @if (h.HasBloodType) { <span> · Blood ✓</span> }
+                        </div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" style="font-size: 1.1rem;">@h.AvailableBeds</div>
+                        <div class="stat-label">beds / ICU @h.AvailableIcuBeds</div>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private TriageFormModel _request = new()
+    {
+        Latitude = 28.6139,
+        Longitude = 77.2090,
+        Symptoms = "",
+        BloodTypeNeeded = ""
+    };
+
+    private TriageResponse? _result;
+    private bool _analyzing;
+    private string? _error;
+
+    private async Task Analyze()
+    {
+        _analyzing = true;
+        _error = null;
+        _result = null;
+        try
+        {
+            var req = new TriageRequest(
+                _request.Symptoms,
+                _request.Latitude,
+                _request.Longitude,
+                _request.PatientName,
+                null,
+                string.IsNullOrEmpty(_request.BloodTypeNeeded) ? null : _request.BloodTypeNeeded);
+
+            _result = await Api.AnalyzeSymptomsAsync(req);
+            if (_result is null)
+                _error = "Triage failed — check that the API gateway and triage service are running.";
+        }
+        catch (Exception ex)
+        {
+            _error = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _analyzing = false;
+        }
+    }
+
+    private class TriageFormModel
+    {
+        public string Symptoms { get; set; } = "";
+        public double Latitude { get; set; }
+        public double Longitude { get; set; }
+        public string? PatientName { get; set; }
+        public string? BloodTypeNeeded { get; set; }
+    }
+}

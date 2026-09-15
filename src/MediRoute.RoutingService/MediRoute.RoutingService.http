@@ -1,0 +1,6 @@
+@MediRoute.RoutingService_HostAddress = http://localhost:5098
+
+GET {{MediRoute.RoutingService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

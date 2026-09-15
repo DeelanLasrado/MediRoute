@@ -1,0 +1,112 @@
+﻿@page "/"
+@inject ApiService Api
+@inject NavigationManager Nav
+
+<PageTitle>MediRoute Dashboard</PageTitle>
+
+<h1>Command Center</h1>
+<p class="subtitle"><span class="live-dot"></span>Live emergency healthcare routing across India</p>
+
+@if (_loading)
+{
+    <div class="alert alert-info">Loading hospital network…</div>
+}
+else
+{
+    <div class="grid-3" style="margin-bottom: 2rem;">
+        <div class="panel">
+            <div class="stat">
+                <div class="stat-value">@_hospitals.Count</div>
+                <div class="stat-label">Hospitals Online</div>
+            </div>
+        </div>
+        <div class="panel">
+            <div class="stat">
+                <div class="stat-value">@_hospitals.Sum(h => h.AvailableBeds)</div>
+                <div class="stat-label">Beds Available</div>
+            </div>
+        </div>
+        <div class="panel">
+            <div class="stat">
+                <div class="stat-value">@_hospitals.Sum(h => h.AvailableIcuBeds)</div>
+                <div class="stat-label">ICU Beds Free</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <div class="panel">
+            <h2>Hospital Capacity</h2>
+            @foreach (var h in _hospitals)
+            {
+                var pct = h.TotalBeds > 0 ? (double)h.AvailableBeds / h.TotalBeds * 100 : 0;
+                <div class="hospital-row">
+                    <div>
+                        <strong>@h.Name</strong>
+                        <div class="hospital-meta">@h.City · ICU @h.AvailableIcuBeds/@h.IcuBeds</div>
+                        <div class="cap-bar" style="width: 200px;">
+                            <div class="cap-fill" style="width: @(pct)%;"></div>
+                        </div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" style="font-size: 1.2rem;">@h.AvailableBeds</div>
+                        <div class="stat-label">beds</div>
+                    </div>
+                </div>
+            }
+        </div>
+        <div class="panel">
+            <h2>Quick Actions</h2>
+            <p class="subtitle" style="margin-bottom: 1.25rem;">Start an emergency triage or manage capacity</p>
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                <button class="btn btn-primary" @onclick='() => Nav.NavigateTo("/triage")'>
+                    Run AI Symptom Triage
+                </button>
+                <button class="btn btn-teal" @onclick='() => Nav.NavigateTo("/capacity")'>
+                    Update Hospital Capacity
+                </button>
+                <button class="btn btn-ghost" @onclick='() => Nav.NavigateTo("/heatmap")'>
+                    View City Heatmap
+                </button>
+            </div>
+
+            @if (_emergencies.Any())
+            {
+                <h2 style="margin-top: 2rem;">Recent Emergencies</h2>
+                @foreach (var e in _emergencies.Take(5))
+                {
+                    <div class="hospital-row">
+                        <div>
+                            <span class="badge badge-@e.Urgency.ToString().ToLowerInvariant()">@e.Urgency</span>
+                            <span style="margin-left: 0.5rem;">@(e.AiDiagnosis.Length > 50 ? e.AiDiagnosis[..50] + "…" : e.AiDiagnosis)</span>
+                            <div class="hospital-meta">@e.Status · @e.RequestedAt.ToLocalTime().ToString("g")</div>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private List<Hospital> _hospitals = [];
+    private List<EmergencyRequest> _emergencies = [];
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _hospitals = await Api.GetHospitalsAsync() ?? [];
+            _emergencies = await Api.GetEmergenciesAsync() ?? [];
+        }
+        catch
+        {
+            _hospitals = [];
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

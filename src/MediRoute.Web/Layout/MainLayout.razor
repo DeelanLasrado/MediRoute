@@ -1,0 +1,19 @@
+﻿@inherits LayoutComponentBase
+
+<div class="layout">
+    <aside class="sidebar">
+        <a href="/" class="brand">Medi<span>Route</span></a>
+        <nav class="nav-links">
+            <NavLink href="/" Match="NavLinkMatch.All">Dashboard</NavLink>
+            <NavLink href="/triage">AI Triage</NavLink>
+            <NavLink href="/hospitals">Hospitals</NavLink>
+            <NavLink href="/capacity">Capacity Manager</NavLink>
+            <NavLink href="/ambulances">Ambulances</NavLink>
+            <NavLink href="/heatmap">City Heatmap</NavLink>
+            <NavLink href="/login">Login</NavLink>
+        </nav>
+    </aside>
+    <main class="main">
+        @Body
+    </main>
+</div>

@@ -1,0 +1,11 @@
+.git
+.vs
+**/bin
+**/obj
+**/out
+**/.idea
+**/.vscode
+*.user
+*.md
+.env
+src/MediRoute.Web

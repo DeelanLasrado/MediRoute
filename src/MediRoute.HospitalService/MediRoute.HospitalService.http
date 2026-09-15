@@ -1,0 +1,6 @@
+@MediRoute.HospitalService_HostAddress = http://localhost:5252
+
+GET {{MediRoute.HospitalService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

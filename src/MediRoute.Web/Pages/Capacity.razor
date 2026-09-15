@@ -1,0 +1,152 @@
+@page "/capacity"
+@inject ApiService Api
+@inject AuthService Auth
+
+<PageTitle>Capacity Manager — MediRoute</PageTitle>
+
+<h1>Capacity Manager</h1>
+<p class="subtitle">Update bed counts, ICU availability, and blood bank stock</p>
+
+@if (!Auth.IsAuthenticated)
+{
+    <div class="alert alert-info">
+        Login as HospitalAdmin to update capacity.
+        Demo: <code>admin@mediroute.com</code> / <code>Admin@123</code>
+        — or use the Login page first.
+    </div>
+}
+
+<div class="grid-2">
+    <div class="panel">
+        <label>Hospital</label>
+        <InputSelect @bind-Value="_selectedId" @bind-Value:after="OnHospitalChanged">
+            <option value="0">— Select —</option>
+            @foreach (var h in _hospitals)
+            {
+                <option value="@h.Id">@h.Name</option>
+            }
+        </InputSelect>
+
+        @if (_selected is not null)
+        {
+            <label>Available Beds</label>
+            <InputNumber @bind-Value="_availableBeds" />
+
+            <label>Available ICU Beds</label>
+            <InputNumber @bind-Value="_availableIcu" />
+
+            <h2 style="margin-top: 1rem;">Blood Bank</h2>
+            @foreach (var stock in _bloodStocks)
+            {
+                <div class="form-row" style="align-items: center;">
+                    <label style="margin: 0;">@stock.BloodType</label>
+                    <InputNumber @bind-Value="stock.UnitsAvailable" />
+                </div>
+            }
+
+            <button class="btn btn-teal" @onclick="SaveAsync" disabled="@_saving" style="margin-top: 1rem;">
+                @(_saving ? "Saving…" : "Push Live Update")
+            </button>
+
+            @if (!string.IsNullOrEmpty(_message))
+            {
+                <div class="alert @(_success ? "alert-success" : "alert-error")" style="margin-top: 1rem;">@_message</div>
+            }
+        }
+    </div>
+
+    <div class="panel">
+        <h2><span class="live-dot"></span>Live Preview</h2>
+        @if (_selected is null)
+        {
+            <div class="alert alert-info">Select a hospital to manage capacity</div>
+        }
+        else
+        {
+            <p><strong>@_selected.Name</strong></p>
+            <p class="hospital-meta">@_selected.City</p>
+            <div class="grid-2" style="margin-top: 1.5rem;">
+                <div class="stat">
+                    <div class="stat-value">@_availableBeds</div>
+                    <div class="stat-label">Beds</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value">@_availableIcu</div>
+                    <div class="stat-label">ICU</div>
+                </div>
+            </div>
+            <p class="hospital-meta" style="margin-top: 1rem;">
+                Changes broadcast via SignalR to all connected ambulances and dashboards.
+            </p>
+        }
+    </div>
+</div>
+
+@code {
+    private List<Hospital> _hospitals = [];
+    private int _selectedId;
+    private Hospital? _selected;
+    private int _availableBeds;
+    private int _availableIcu;
+    private List<BloodStockEdit> _bloodStocks = [];
+    private bool _saving;
+    private string? _message;
+    private bool _success;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _hospitals = await Api.GetHospitalsAsync() ?? [];
+    }
+
+    private void OnHospitalChanged()
+    {
+        _selected = _hospitals.FirstOrDefault(h => h.Id == _selectedId);
+        if (_selected is null) return;
+        _availableBeds = _selected.AvailableBeds;
+        _availableIcu = _selected.AvailableIcuBeds;
+        _bloodStocks = _selected.BloodBank
+            .Select(b => new BloodStockEdit { BloodType = b.BloodType, UnitsAvailable = b.UnitsAvailable })
+            .ToList();
+        _message = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_selected is null) return;
+        _saving = true;
+        _message = null;
+        try
+        {
+            if (!Auth.IsAuthenticated)
+            {
+                await Auth.LoginAsync("admin@mediroute.com", "Admin@123");
+            }
+
+            var req = new CapacityUpdateRequest(
+                _selected.Id,
+                _availableBeds,
+                _availableIcu,
+                _bloodStocks.Select(b => new BloodStockDto(b.BloodType, b.UnitsAvailable)).ToList());
+
+            _success = await Api.UpdateCapacityAsync(_selected.Id, req);
+            _message = _success ? "Capacity updated and broadcast live." : "Update failed — check auth/API.";
+            if (_success)
+            {
+                _hospitals = await Api.GetHospitalsAsync() ?? _hospitals;
+                _selected = _hospitals.FirstOrDefault(h => h.Id == _selectedId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _success = false;
+            _message = ex.Message;
+        }
+        finally { _saving = false; }
+    }
+
+    private class BloodStockEdit
+    {
+        public string BloodType { get; set; } = "";
+        public int UnitsAvailable { get; set; }
+    }
+}

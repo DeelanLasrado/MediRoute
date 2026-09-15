@@ -1,0 +1,65 @@
+@page "/login"
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+<PageTitle>Login — MediRoute</PageTitle>
+
+<h1>Sign In</h1>
+<p class="subtitle">Hospital admins, paramedics, and city officials</p>
+
+<div class="panel" style="max-width: 420px;">
+    @if (Auth.IsAuthenticated)
+    {
+        <div class="alert alert-success">
+            Signed in as <strong>@Auth.FullName</strong> (@Auth.Role)
+        </div>
+        <button class="btn btn-ghost" @onclick="Logout">Sign Out</button>
+    }
+    else
+    {
+        <label>Email</label>
+        <InputText @bind-Value="_email" />
+
+        <label>Password</label>
+        <InputText type="password" @bind-Value="_password" />
+
+        <button class="btn btn-primary" @onclick="LoginAsync" disabled="@_busy">
+            @(_busy ? "Signing in…" : "Sign In")
+        </button>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-error" style="margin-top: 1rem;">@_error</div>
+        }
+
+        <p class="hospital-meta" style="margin-top: 1.25rem;">
+            Demo admin: admin@mediroute.com / Admin@123
+        </p>
+    }
+</div>
+
+@code {
+    private string _email = "admin@mediroute.com";
+    private string _password = "Admin@123";
+    private bool _busy;
+    private string? _error;
+
+    private async Task LoginAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var ok = await Auth.LoginAsync(_email, _password);
+            if (!ok) _error = "Invalid credentials or auth service offline.";
+            else Nav.NavigateTo("/");
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private void Logout()
+    {
+        Auth.Logout();
+    }
+}

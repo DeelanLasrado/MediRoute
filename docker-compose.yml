@@ -1,0 +1,127 @@
+services:
+  sql-server:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: mediroute-sql
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "MediRoute@Pass123"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sql_data:/var/opt/mssql
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "MediRoute@Pass123" -C -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: mediroute-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: mediroute-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  hospital:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: hospital
+    container_name: mediroute-hospital
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: "Server=sql-server,1433;Database=MediRouteDb;User Id=sa;Password=MediRoute@Pass123;TrustServerCertificate=True;MultipleActiveResultSets=true"
+      ConnectionStrings__Redis: "redis:6379"
+      RabbitMQ__Host: rabbitmq
+      Jwt__Key: "MediRoute-Super-Secret-Key-Change-In-Production-Min32Chars!"
+    ports:
+      - "5002:8080"
+    depends_on:
+      - sql-server
+      - redis
+      - rabbitmq
+
+  triage:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: triage
+    container_name: mediroute-triage
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Services__Routing: "http://routing:8080"
+      Services__Hospital: "http://hospital:8080"
+      AzureOpenAI__Endpoint: "${AZURE_OPENAI_ENDPOINT:-https://mediroute-openai.openai.azure.com/}"
+      AzureOpenAI__ApiKey: "${AZURE_OPENAI_API_KEY:-CHANGE_ME}"
+      AzureOpenAI__DeploymentName: "${AZURE_OPENAI_DEPLOYMENT:-gpt-4o}"
+    ports:
+      - "5001:8080"
+    depends_on:
+      - routing
+
+  routing:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: routing
+    container_name: mediroute-routing
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Services__Hospital: "http://hospital:8080"
+      ConnectionStrings__Redis: "redis:6379"
+    ports:
+      - "5003:8080"
+    depends_on:
+      - hospital
+
+  notification:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: notification
+    container_name: mediroute-notification
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Redis: "redis:6379"
+      RabbitMQ__Host: rabbitmq
+    ports:
+      - "5004:8080"
+    depends_on:
+      - redis
+      - rabbitmq
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: gateway
+    container_name: mediroute-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Docker
+    ports:
+      - "5000:8080"
+    depends_on:
+      - triage
+      - hospital
+      - routing
+      - notification
+
+volumes:
+  sql_data:
+  redis_data:
+  rabbitmq_data:

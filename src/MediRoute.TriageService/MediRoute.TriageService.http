@@ -1,0 +1,6 @@
+@MediRoute.TriageService_HostAddress = http://localhost:5000
+
+GET {{MediRoute.TriageService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

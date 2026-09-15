@@ -1,0 +1,89 @@
+@page "/ambulances"
+@inject ApiService Api
+
+<PageTitle>Ambulances — MediRoute</PageTitle>
+
+<h1>Ambulance Tracking</h1>
+<p class="subtitle">GPS positions cached in Redis and broadcast via SignalR every 10 seconds</p>
+
+<div class="panel">
+    @if (_loading)
+    {
+        <div class="alert alert-info">Loading ambulances…</div>
+    }
+    else if (!_ambulances.Any())
+    {
+        <div class="alert alert-info">
+            No ambulances registered yet. Register one below, then POST location updates to
+            <code>/api/ambulances/location</code> every 10 seconds from the mobile app.
+        </div>
+        <button class="btn btn-teal" @onclick="SeedDemoAsync">Register Demo Ambulance</button>
+    }
+    else
+    {
+        @foreach (var a in _ambulances)
+        {
+            <div class="hospital-row">
+                <div>
+                    <strong>@a.VehicleNumber</strong>
+                    <div class="hospital-meta">
+                        @a.DriverName · @a.DriverPhone
+                        · @(a.IsAvailable ? "Available" : "On call")
+                    </div>
+                    <div class="hospital-meta">
+                        Lat @a.Latitude.ToString("F4"), Lng @a.Longitude.ToString("F4")
+                        · Updated @a.LastLocationUpdate.ToLocalTime().ToString("g")
+                    </div>
+                </div>
+                <span class="badge @(a.IsAvailable ? "badge-p3" : "badge-p1")">
+                    @(a.IsAvailable ? "FREE" : "BUSY")
+                </span>
+            </div>
+        }
+        <button class="btn btn-ghost" @onclick="SeedDemoAsync" style="margin-top: 1rem;">Add Another Demo Unit</button>
+    }
+
+    @if (!string.IsNullOrEmpty(_message))
+    {
+        <div class="alert @(_ok ? "alert-success" : "alert-error")" style="margin-top: 1rem;">@_message</div>
+    }
+</div>
+
+@code {
+    private List<Ambulance> _ambulances = [];
+    private bool _loading = true;
+    private string? _message;
+    private bool _ok;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _ambulances = await Api.GetAmbulancesAsync() ?? []; }
+        catch { _ambulances = []; }
+        finally { _loading = false; }
+    }
+
+    private async Task SeedDemoAsync()
+    {
+        try
+        {
+            var ambulance = new Ambulance
+            {
+                VehicleNumber = $"DL-01-AMB-{Random.Shared.Next(100, 999)}",
+                DriverName = "Rajesh Kumar",
+                DriverPhone = "+91-98765-43210",
+                Latitude = 28.6139 + Random.Shared.NextDouble() * 0.05,
+                Longitude = 77.2090 + Random.Shared.NextDouble() * 0.05,
+                IsAvailable = true
+            };
+            var created = await Api.RegisterAmbulanceAsync(ambulance);
+            _ok = created is not null;
+            _message = _ok ? "Demo ambulance registered." : "Failed to register ambulance.";
+            if (_ok) _ambulances = await Api.GetAmbulancesAsync() ?? [];
+        }
+        catch (Exception ex)
+        {
+            _ok = false;
+            _message = ex.Message;
+        }
+    }
+}

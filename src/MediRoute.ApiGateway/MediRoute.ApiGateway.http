@@ -1,0 +1,6 @@
+@MediRoute.ApiGateway_HostAddress = http://localhost:5130
+
+GET {{MediRoute.ApiGateway_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
