@@ -176,6 +176,8 @@ app.UseSwagger();
 app.UseSwaggerUI();
 
 app.UseCors();
+app.UseDefaultFiles();
+app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -184,5 +186,6 @@ if (enableHangfire && app.Services.GetService<IBackgroundJobClient>() is not nul
 
 app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "HospitalService" }));
+app.MapFallbackToFile("index.html");
 
 app.Run();

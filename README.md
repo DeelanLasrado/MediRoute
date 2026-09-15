@@ -1,7 +1,12 @@
 # MediRoute — AI-Powered Emergency Healthcare Routing System
 
-**Live API (Azure Free):** https://mediroute-deelan.azurewebsites.net/swagger
 
+**Live app**
+- Frontend (Blazor): https://agreeable-pebble-094cf1700.3.azurestaticapps.net/
+- API + Swagger: https://mediroute-deelan.azurewebsites.net/swagger
+- Health: https://mediroute-deelan.azurewebsites.net/health
+
+Demo login: `admin@mediroute.com` / `Admin@123`
 
 Real-time hospital capacity tracking + AI triage routing for medical emergencies in India.
 
