@@ -13,11 +13,14 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddApplicationInsightsTelemetry();
 
+// Faster startup on Free F1 tier
+builder.WebHost.ConfigureKestrel(o => o.Limits.KeepAliveTimeout = TimeSpan.FromMinutes(2));
+
 var sqlConn = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? "Server=localhost,1433;Database=MediRouteDb;User Id=sa;Password=MediRoute@Pass123;TrustServerCertificate=True;MultipleActiveResultSets=true";
 
 builder.Services.AddDbContext<MediRouteDbContext>(options =>
-    options.UseSqlServer(sqlConn));
+    options.UseSqlServer(sqlConn, sql => sql.EnableRetryOnFailure(3)));
 
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     {
@@ -49,36 +52,38 @@ builder.Services.AddAuthentication(options =>
         };
     });
 
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+var redisConn = builder.Configuration.GetConnectionString("Redis");
+if (!string.IsNullOrWhiteSpace(redisConn)
+    && !redisConn.Contains("localhost", StringComparison.OrdinalIgnoreCase)
+    && !redisConn.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase))
 {
-    var redisConn = builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379";
-    return ConnectionMultiplexer.Connect(new ConfigurationOptions
-    {
-        EndPoints = { redisConn },
-        AbortOnConnectFail = false,
-        ConnectRetry = 3,
-        ConnectTimeout = 3000
-    });
-});
-
-try
-{
-    builder.Services.AddHangfire(config =>
-        config.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
-            .UseSimpleAssemblyNameTypeSerializer()
-            .UseRecommendedSerializerSettings()
-            .UseSqlServerStorage(sqlConn, new SqlServerStorageOptions
-            {
-                PrepareSchemaIfNecessary = true,
-                CommandBatchMaxTimeout = TimeSpan.FromMinutes(5),
-                SlidingInvisibilityTimeout = TimeSpan.FromMinutes(5),
-                QueuePollInterval = TimeSpan.FromSeconds(15)
-            }));
-    builder.Services.AddHangfireServer();
+    builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
+        ConnectionMultiplexer.Connect(redisConn));
 }
-catch (Exception ex)
+
+var enableHangfire = !string.Equals(
+    builder.Configuration["DisableHangfire"], "true", StringComparison.OrdinalIgnoreCase);
+if (enableHangfire)
 {
-    Console.WriteLine($"Hangfire setup deferred: {ex.Message}");
+    try
+    {
+        builder.Services.AddHangfire(config =>
+            config.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
+                .UseSimpleAssemblyNameTypeSerializer()
+                .UseRecommendedSerializerSettings()
+                .UseSqlServerStorage(sqlConn, new SqlServerStorageOptions
+                {
+                    PrepareSchemaIfNecessary = true,
+                    CommandBatchMaxTimeout = TimeSpan.FromMinutes(5),
+                    SlidingInvisibilityTimeout = TimeSpan.FromMinutes(5),
+                    QueuePollInterval = TimeSpan.FromSeconds(15)
+                }));
+        builder.Services.AddHangfireServer();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Hangfire setup deferred: {ex.Message}");
+    }
 }
 
 builder.Services.AddControllers()
@@ -159,17 +164,15 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-if (app.Environment.IsDevelopment() || app.Environment.EnvironmentName == "Docker")
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+// Swagger enabled in all environments for demo/portfolio hosting
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
-if (app.Services.GetService<IBackgroundJobClient>() is not null)
+if (enableHangfire && app.Services.GetService<IBackgroundJobClient>() is not null)
     app.UseHangfireDashboard("/hangfire");
 
 app.MapControllers();
