@@ -7,7 +7,11 @@ builder.Services.AddApplicationInsightsTelemetry();
 
 var redisConn = builder.Configuration.GetConnectionString("Redis");
 var signalRBuilder = builder.Services.AddSignalR();
-if (!string.IsNullOrWhiteSpace(redisConn) && !redisConn.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase))
+// Skip Redis backplane for local/dev — in-memory SignalR is enough for demos
+if (!string.IsNullOrWhiteSpace(redisConn)
+    && !redisConn.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase)
+    && !redisConn.Contains("localhost", StringComparison.OrdinalIgnoreCase)
+    && !redisConn.Contains("127.0.0.1", StringComparison.OrdinalIgnoreCase))
 {
     try
     {
@@ -18,7 +22,7 @@ if (!string.IsNullOrWhiteSpace(redisConn) && !redisConn.Contains("CHANGE_ME", St
     }
     catch
     {
-        // Redis backplane optional for local/dev
+        // Redis backplane optional
     }
 }
 

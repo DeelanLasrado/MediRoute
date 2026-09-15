@@ -158,8 +158,15 @@ using (var scope = app.Services.CreateScope())
         catch (Exception ex)
         {
             logger.LogWarning(ex, "DB init attempt {Attempt}/10 failed — retrying in 5s", attempt);
-            if (attempt == 10) throw;
-            await Task.Delay(5000);
+            if (attempt == 10)
+            {
+                // Don't crash the process on Free tier cold starts — listen and retry on requests
+                logger.LogError(ex, "Database init failed after 10 attempts; starting without seed");
+            }
+            else
+            {
+                await Task.Delay(5000);
+            }
         }
     }
 }

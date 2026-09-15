@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using MediRoute.Shared.Enums;
 
 namespace MediRoute.Shared.Models;
@@ -13,6 +14,7 @@ public class EmergencyRequest
     public double Latitude { get; set; }
     public double Longitude { get; set; }
     public int? AssignedHospitalId { get; set; }
+    [JsonIgnore]
     public Hospital? AssignedHospital { get; set; }
     public string? PatientName { get; set; }
     public string? ContactPhone { get; set; }

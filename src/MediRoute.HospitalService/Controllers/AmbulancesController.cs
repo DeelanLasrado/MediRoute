@@ -18,11 +18,11 @@ public class AmbulancesController : ControllerBase
     public AmbulancesController(
         MediRouteDbContext db,
         ILogger<AmbulancesController> logger,
-        IConnectionMultiplexer? redis = null)
+        IServiceProvider services)
     {
         _db = db;
-        _redis = redis;
         _logger = logger;
+        _redis = services.GetService<IConnectionMultiplexer>();
     }
 
     [HttpGet]
