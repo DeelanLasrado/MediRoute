@@ -21,3 +21,6 @@ appsettings.Development.json
 !.env.example
 secrets.json
 **/node_modules/
+
+publish/
+publish.zip
