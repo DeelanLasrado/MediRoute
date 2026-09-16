@@ -9,7 +9,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build:
@@ -21,6 +20,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set lowercase image name
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
@@ -44,16 +46,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        if: github.event_name != 'pull_request'
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha
-            type=raw,value=latest
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -65,7 +57,9 @@ jobs:
           file: ./Dockerfile
           target: gateway
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/gateway:latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/gateway:${{ github.sha }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/gateway:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/gateway:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -77,12 +71,16 @@ jobs:
           file: ./Dockerfile
           target: hospital
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/hospital:latest,${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/hospital:${{ github.sha }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/hospital:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/hospital:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name != 'pull_request'
     environment: production
 
     steps:
@@ -94,14 +92,30 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
-      - name: Publish Hospital Service (primary App Service)
+      - name: Publish Hospital Service (Linux)
         run: |
           dotnet publish src/MediRoute.HospitalService/MediRoute.HospitalService.csproj \
-            -c Release -o ./publish
+            -c Release -r linux-x64 --self-contained false -o ./publish
+          # Bundle Blazor WASM UI into wwwroot (same-origin hosting fallback)
+          dotnet publish src/MediRoute.Web/MediRoute.Web.csproj -c Release -o ./web-pub
+          mkdir -p ./publish/wwwroot
+          cp -r ./web-pub/wwwroot/* ./publish/wwwroot/
+          printf '%s\n' '{' '  "ApiBaseUrl": "/"' '}' > ./publish/wwwroot/appsettings.json
 
       - name: Deploy to Azure App Service
+        id: azure_deploy
+        continue-on-error: true
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
           package: ./publish
+
+      - name: Deploy status
+        run: |
+          if [ "${{ steps.azure_deploy.outcome }}" != "success" ]; then
+            echo "::warning::Azure App Service deploy skipped/failed (check AZURE_WEBAPP_NAME + AZURE_WEBAPP_PUBLISH_PROFILE secrets)."
+            echo "GHCR Docker images were still published successfully."
+          else
+            echo "Azure App Service deploy succeeded."
+          fi
